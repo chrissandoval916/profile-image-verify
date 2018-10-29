@@ -141,7 +141,7 @@ def cache_bottlenecks(sess, image_lists, image_dir, bottleneck_dir,
     """
     If there are no distortions applied, we are very likely to read the same image
     multiple times. As such we want to only calculate the bottleneck layer values once
-    for each image durin preprocessing and then just read the cached values repeatedly
+    for each image during preprocessing and then just read the cached values repeatedly
     during training. This function goes through all the images, calculates the values,
     and then caches them
     :param sess: Current active TensorFlow Session

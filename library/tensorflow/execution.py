@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from library.tensorflow.configuration import get_final_retrain_ops
-from library.graph import create_module_graph, save_graph_to_file
+from library.graph.tensorflow import create_module_graph, save_graph_to_file
 from library.bottleneck import get_random_cached_bottlenecks
 
 TENSOR_NAME = ''
