@@ -20,43 +20,8 @@ class TensorflowBottleneck(BottleneckInterface):
         self.BOTTLENECK_FILE_DIR = bottleneck_file_dir
         self.IMAGE_FILE_DIR = image_file_dir
 
-    def create(self, bottleneck_path, image_lists, label_name, index,
-               category, session, image_data_tensor,
-               decoded_image_tensor, resized_input_tensor,
-               bottleneck_tensor):
-        """
-        Create a single bottleneck file
-        :param bottleneck_path: File system path string to bottleneck file
-        :param image_lists: OrderedDict of training images for each label
-        :param label_name: Label string we want to get an image for
-        :param index: Integer offset of the image we want. This will be modulo-ed by the
-                      available number of images for the label, so it can be arbitrarily large
-        :param category: Name string of which set to pull images from (training, testing, validation)
-        :param session: Current active TensorFlow Session
-        :param image_data_tensor: Input tensor for jpeg data from file
-        :param decoded_image_tensor: Output of decoding and resizing the image
-        :param resized_input_tensor: Input node of the recognition graph
-        :param bottleneck_tensor: Penultimate output layer of the graph
-        :return:
-        """
-        tf.logging.info('Creating bottleneck at ' + bottleneck_path)
-        image_path = self.get_image_path(image_lists, label_name, index, category)
-
-        if not tf.gfile.Exists(image_path):
-            tf.logging.fatal('File does not exist %s', image_path)
-        image_data = tf.gfile.FastGFile(image_path, 'rb').read()
-        try:
-            bottleneck_values = self.run_bottleneck_on_image(session, image_data, image_data_tensor,
-                                                             decoded_image_tensor, resized_input_tensor,
-                                                             bottleneck_tensor)
-        except Exception as e:
-            raise RuntimeError('Error during processing file %s (%s)' % (image_path, str(e)))
-        bottleneck_string = ','.join(str(x) for x in bottleneck_values)
-        with open(bottleneck_path, 'w') as bottleneck_file:
-            bottleneck_file.write(bottleneck_string)
-
-    def save(self, session, image_lists, image_tensor_placeholder, manipulated_image_data,
-                      resized_input_tensor, bottleneck_tensor):
+    def create(self, session, image_lists, image_tensor_placeholder, manipulated_image_data,
+               resized_input_tensor, bottleneck_tensor):
         """
         If there are no distortions applied, we are very likely to read the same image
         multiple times. As such we want to only calculate the bottleneck layer values once
@@ -86,18 +51,9 @@ class TensorflowBottleneck(BottleneckInterface):
                     if how_many_bottlenecks % 100 == 0:
                         tf.logging.info(str(how_many_bottlenecks) + ' bottleneck files created.')
 
-    def get(self, session, image_lists, batch_size, category, image_tensor_placeholder, manipulated_image_data,
-            resized_input_tensor, bottleneck_tensor, distorting_images=False):
-        if distorting_images:
-            return self.get_distorted_bottlenecks(session, image_lists, batch_size, category, image_tensor_placeholder,
-                                                  manipulated_image_data, resized_input_tensor, bottleneck_tensor)
-        else:
-            return self.get_cached_bottlenecks(session, image_lists, batch_size, category, image_tensor_placeholder,
-                                               manipulated_image_data, resized_input_tensor, bottleneck_tensor)
-
     @staticmethod
-    def run_bottleneck_on_image(sess, image_data, image_data_tensor,
-                                decoded_image_tensor, resized_input_tensor, bottleneck_tensor):
+    def run(sess, image_data, image_data_tensor,
+            decoded_image_tensor, resized_input_tensor, bottleneck_tensor):
         """
         Runs inference on an image to extract the bottleneck summary layer
         :param sess: Current active TensorFlow Session
@@ -108,12 +64,21 @@ class TensorflowBottleneck(BottleneckInterface):
         :param bottleneck_tensor: Lyer before the final softmax
         :return: Numpy array of bottleneck values
         """
-        # First decode the JPEG image, resize it, and rescale the pixel values
+        # First decode the image, resize it, and rescale the pixel values
         resized_input_values = sess.run(decoded_image_tensor, {image_data_tensor: image_data})
         # Then run it through the recognition network
         bottleneck_values = sess.run(bottleneck_tensor, {resized_input_tensor: resized_input_values})
         bottleneck_values = np.squeeze(bottleneck_values)
         return bottleneck_values
+
+    def get(self, session, image_lists, batch_size, category, image_tensor_placeholder, manipulated_image_data,
+            resized_input_tensor, bottleneck_tensor, distorting_images=False):
+        if distorting_images:
+            return self.get_distorted_bottlenecks(session, image_lists, batch_size, category, image_tensor_placeholder,
+                                                  manipulated_image_data, resized_input_tensor, bottleneck_tensor)
+        else:
+            return self.get_cached_bottlenecks(session, image_lists, batch_size, category, image_tensor_placeholder,
+                                               manipulated_image_data, resized_input_tensor, bottleneck_tensor)
 
     @staticmethod
     def get_relative_path(image_lists, label_name, index, category):
@@ -287,9 +252,9 @@ class TensorflowBottleneck(BottleneckInterface):
         ensure_dir_exists(sub_dir_path)
         bottleneck_path = self.get_bottleneck_path(image_lists, label_name, index, category)
         if not os.path.exists(bottleneck_path):
-            self.create(bottleneck_path, image_lists, label_name, index, category, session,
-                        image_tensor_placeholder, manipulated_image_data, resized_input_tensor,
-                        bottleneck_tensor)
+            self.create_bottleneck_file(bottleneck_path, image_lists, label_name, index, category, session,
+                                        image_tensor_placeholder, manipulated_image_data, resized_input_tensor,
+                                        bottleneck_tensor)
         with open(bottleneck_path, 'r') as bottleneck_file:
             bottleneck_string = bottleneck_file.read()
         did_hit_error = False
@@ -299,11 +264,46 @@ class TensorflowBottleneck(BottleneckInterface):
             tf.logging.warning('Invalid float found, recreating bottleneck')
             did_hit_error = True
         if did_hit_error:
-            self.create(bottleneck_path, image_lists, label_name, index, category, session,
-                        image_tensor_placeholder, manipulated_image_data, resized_input_tensor,
-                        bottleneck_tensor)
+            self.create_bottleneck_file(bottleneck_path, image_lists, label_name, index, category, session,
+                                        image_tensor_placeholder, manipulated_image_data, resized_input_tensor,
+                                        bottleneck_tensor)
             with open(bottleneck_path, 'r') as bottleneck_file:
                 bottleneck_string = bottleneck_file.read()
             # Dont worry about exceptions as they shouldn't happen after a fresh creation
             bottleneck_values = [float(x) for x in bottleneck_string.split(',')]
         return bottleneck_values
+
+    def create_bottleneck_file(self, bottleneck_path, image_lists, label_name, index,
+                               category, session, image_data_tensor,
+                               decoded_image_tensor, resized_input_tensor,
+                               bottleneck_tensor):
+        """
+        Create a single bottleneck file
+        :param bottleneck_path: File system path string to bottleneck file
+        :param image_lists: OrderedDict of training images for each label
+        :param label_name: Label string we want to get an image for
+        :param index: Integer offset of the image we want. This will be modulo-ed by the
+                      available number of images for the label, so it can be arbitrarily large
+        :param category: Name string of which set to pull images from (training, testing, validation)
+        :param session: Current active TensorFlow Session
+        :param image_data_tensor: Input tensor for jpeg data from file
+        :param decoded_image_tensor: Output of decoding and resizing the image
+        :param resized_input_tensor: Input node of the recognition graph
+        :param bottleneck_tensor: Penultimate output layer of the graph
+        :return:
+        """
+        tf.logging.info('Creating bottleneck at ' + bottleneck_path)
+        image_path = self.get_image_path(image_lists, label_name, index, category)
+
+        if not tf.gfile.Exists(image_path):
+            tf.logging.fatal('File does not exist %s', image_path)
+        image_data = tf.gfile.FastGFile(image_path, 'rb').read()
+        try:
+            bottleneck_values = self.run(session, image_data, image_data_tensor,
+                                         decoded_image_tensor, resized_input_tensor,
+                                         bottleneck_tensor)
+        except Exception as e:
+            raise RuntimeError('Error during processing file %s (%s)' % (image_path, str(e)))
+        bottleneck_string = ','.join(str(x) for x in bottleneck_values)
+        with open(bottleneck_path, 'w') as bottleneck_file:
+            bottleneck_file.write(bottleneck_string)

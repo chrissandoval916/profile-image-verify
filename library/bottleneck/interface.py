@@ -6,12 +6,12 @@ class BottleneckInterface(metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def create(cls, *args):
-        """ Create a new bottleneck"""
+        """ Create a new bottleneck """
 
     @classmethod
     @abc.abstractmethod
-    def save(cls, *args):
-        """ Save a bottleneck"""
+    def run(cls, *args):
+        """ Runs inference on an image to generate bottleneck layer """
 
     @classmethod
     @abc.abstractmethod
