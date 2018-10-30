@@ -17,3 +17,7 @@ class BottleneckInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def get(cls, *args):
         """ Get a bottleneck """
+
+    @classmethod
+    def get_batch(cls, *args):
+        """ Get a batch of bottlenecks """

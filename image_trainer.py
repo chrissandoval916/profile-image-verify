@@ -279,10 +279,17 @@ def main_func(_):
             )
         else:
             # Calculate bottleneck image summaries and cache them on disk
-            bottleneck.cache_bottlenecks(sess, image_lists, ARGS.image_dir,
-                              ARGS.bottleneck_dir, jpeg_data_tensor,
-                              decoded_image_tensor, resized_image_tensor,
-                              bottleneck_tensor, ARGS.tfhub_module)
+            how_many_bottlenecks = 0
+            for label_name, label_lists in image_lists.items():
+                for category in ['training', 'testing', 'validation']:
+                    category_list = label_lists[category]
+                    for index, unused_base_name in enumerate(category_list):
+                        bottleneck.get(sess, image_lists, label_name, index, category, jpeg_data_tensor,
+                                       decoded_image_tensor, resized_image_tensor, bottleneck_tensor)
+
+                        how_many_bottlenecks += 1
+                        if how_many_bottlenecks % 100 == 0:
+                            tf.logging.info(str(how_many_bottlenecks) + ' bottleneck files created.')
 
         # Create the operations we need to evaluate the accuracy of our new layer
         evaluation_step, _ = te.add_evaluation_step(final_tensor, ground_truth_input)
